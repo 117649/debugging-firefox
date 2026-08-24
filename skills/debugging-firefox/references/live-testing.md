@@ -41,6 +41,8 @@ Begin with a small read-only probe using the tested client. Record the root gree
 
 If any part is missing, return `unsupported` with the exact missing capability and detected target identity. Do not guess alternate actors, packets, or privileged globals. Probe every version-sensitive API needed by the planned matrix before mutation.
 
+This gate is the listener preflight and runs before any task operation. Connection refusal/reset, a malformed or missing greeting, or timeout/transport failure in a mandatory capability marks the listener unhealthy. Dispose that client. With prior restart authorization, a complete baseline, and exclusive ownership, take the restart checkpoint immediately instead of opening a replacement socket to the same listener. Without those prerequisites, stop before the task call. Rerun the full gate once on the replacement instance; another unhealthy result stops without a task operation or second restart. Treat an explicit unsupported-capability response as incompatibility, not listener failure.
+
 ## Same-process XPI install and readiness
 
 Validate the exact XPI path, contents, expected add-on ID, and version first. Through the same parent-process connection, import `AddonManager`, construct an `nsIFile`, pass the native path serialized with `JSON.stringify(xpiPath)` to `initWithPath()`, and call `AddonManager.getInstallForFile(file)`. Capture candidate state/error before and after `install.install()`, then query the expected add-on ID, version, active/disabled flags, and restart requirement. Observed numeric states are run evidence, not cross-version constants.
@@ -67,7 +69,7 @@ Direct `gBrowser.adoptTab()` bypasses the native drop handler and cannot prove t
 
 ## Restart checkpoint
 
-Restart only after restartless operation is shown insufficient and the user separately approves it. Capture the executable/profile, original instance sentinel, PID/process tree, listener, serializable session invariants, relevant add-on state, and task-owned resources. Require every other known task to release mutation ownership and close its client; uncertain release blocks restart.
+Restart only for a pre-authorized unhealthy listener preflight or after restartless operation is shown insufficient and the user separately approves it. Capture the executable/profile, original instance sentinel, PID/process tree, listener, serializable session invariants, relevant add-on state, and task-owned resources. Require every other known task to release mutation ownership and close its client; uncertain release blocks restart.
 
 Request an ordinary quit through the sole authorized control path. Socket closure is expected: dispose the old client and wait to the diagnostic deadline without killing a shared or pre-existing process. Relaunch the same executable and profile without adding isolation flags. Detect the replacement PID, expose the caller-approved loopback listener, create one new client, rediscover capabilities, and capture a new sentinel and actor set. Old actors, sentinels, sockets, and snapshots are invalid.
 

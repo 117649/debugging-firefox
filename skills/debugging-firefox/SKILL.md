@@ -9,7 +9,7 @@ compatibility: Requires Node.js 22+ and desktop Firefox exposing classic DevTool
 
 ## Core principle
 
-Treat the live Firefox session as user data. Use one live task-owned loopback RDP socket and restore every task-owned change.
+Treat the live Firefox session as user data. Use one task-owned loopback RDP socket and restore every task-owned change.
 
 ## Target and ownership
 
@@ -24,12 +24,12 @@ Allow one mutation owner per instance and one live task-owned socket at a time. 
 ## Workflow
 
 1. Capture the baseline: target identity, browser state, ownership, and privacy-minimized restoration invariants.
-2. Connect once with [scripts/firefox-rdp.mjs](scripts/firefox-rdp.mjs). Record the root greeting and require `listProcesses`, a parent-process descriptor, `getTarget`, a console actor, and `evaluateJSAsync`; name missing capabilities exactly and stop rather than guess actor calls.
-3. Read [references/live-testing.md](references/live-testing.md) for mutation or behavior proof. Install/reload claims require install/readiness and restoration; behavior claims require an exercised user-facing/native path. Otherwise mark behavior unverified and continue install-only work.
-4. Use bounded readiness predicates. A timeout invalidates the socket; dispose it before one authorized sequential replacement, query task-owned authoritative state once, then decide whether one retry is safe.
+2. Before any operation, connect once with [scripts/firefox-rdp.mjs](scripts/firefox-rdp.mjs). Require root greeting, `listProcesses`, parent descriptor, `getTarget`, console actor, and `evaluateJSAsync`; failure takes the restart rule, never same-listener retry.
+3. Read [references/live-testing.md](references/live-testing.md) before mutation, behavior proof, or restart. Install/reload claims require install/readiness and restoration; behavior claims require an exercised user-facing/native path. Otherwise mark behavior unverified and continue install-only work.
+4. After dispatch, a timeout invalidates the socket; one authorized sequential replacement may only query task-owned authoritative state once before deciding whether retry is safe.
 5. In `finally`, restore only task-owned changes; compare captured restoration invariants with the baseline; close the client; report retained Firefox listeners/processes.
 
-Restart requires separate authorization, a baseline, and prior release from other tasks. Afterward every actor, sentinel, socket, and snapshot is stale; rediscover the replacement instance.
+An unhealthy preflight takes one pre-authorized restart before the call; without baseline and released ownership, stop. All old protocol state is stale; rediscover and rerun preflight once. Failure or explicit unsupported response stops without restart.
 
 ## Quick reference
 

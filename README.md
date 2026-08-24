@@ -52,7 +52,7 @@ The test starts only its local mock RDP server. It does not download, launch, co
 
 Read `skills/debugging-firefox/references/live-testing.md` before any live mutation. Record the highest completed level only: static, package, protocol, install/readiness, behavior, and restoration. A build, package check, or successful install is not proof of the user-facing runtime path.
 
-Live work requires an explicitly selected executable and loopback port, one mutation owner, one task-owned socket, a captured baseline, and a restoration plan. Restart additionally requires separate authorization and release of other mutation owners. If any prerequisite is absent, stop and report the unverified boundary.
+Live work requires an explicitly selected executable and loopback port, one mutation owner, one task-owned socket, a captured baseline, and a restoration plan. Before the first real RDP operation, the retained socket must pass the greeting and mandatory-capability gate. A pre-authorized unhealthy listener goes directly to one orderly Firefox/listener restart after all other tasks release ownership; do not retry the same listener on a replacement socket. If recovery or any prerequisite fails, stop before the operation and report the unverified boundary.
 
 ## Primary documentation
 
