@@ -99,6 +99,40 @@ test("requires an explicit valid caller-selected port", () => {
   }
 });
 
+test("requires a valid timer range", () => {
+  for (const timeoutMs of [1, 2147483647]) {
+    assert.doesNotThrow(() => new FirefoxRdpClient({ port: 6000, timeoutMs }));
+  }
+  for (const timeoutMs of [0, -1, 2147483648, 1.5, NaN, Infinity, "1000"]) {
+    assert.throws(
+      () => new FirefoxRdpClient({ port: 6000, timeoutMs }),
+      /timeoutMs must be an integer from 1 to 2147483647/,
+    );
+  }
+});
+
+test("validates timeout overrides before protocol work", async () => {
+  for (const run of [
+    client => client.next(() => false, 0),
+    client => client.evaluate("40 + 2", 0),
+    client => client.pollJson("status", () => false, { timeoutMs: 0 }),
+  ]) {
+    const client = new FirefoxRdpClient({ port: 6000 });
+    await assert.rejects(Promise.resolve().then(() => run(client)),
+      /timeoutMs must be an integer from 1 to 2147483647/);
+  }
+});
+
+test("validates an optional caller-selected local port", () => {
+  assert.doesNotThrow(() => new FirefoxRdpClient({ port: 6000, localPort: 0 }));
+  for (const localPort of [-1, 65536, 1.5, NaN, Infinity, "6000"]) {
+    assert.throws(
+      () => new FirefoxRdpClient({ port: 6000, localPort }),
+      /localPort must be an integer from 0 to 65535/,
+    );
+  }
+});
+
 for (const capability of ["listProcesses", "getTarget", "evaluateJSAsync"]) {
   for (const sendError of [true, false]) {
     test(`${capability} ${sendError ? "protocol errors" : "timeouts"} name the capability`, async () => {
@@ -317,6 +351,19 @@ test("poll timeout includes time queued behind an earlier evaluation", async () 
 test("rejects malformed frame lengths", () => {
   const decode = createPacketDecoder(() => {});
   assert.throws(() => decode(Buffer.from("nope:{}")), /RDP frame length/);
+});
+
+test("rejects an incomplete RDP header at Firefox's 200-byte limit", () => {
+  const decode = createPacketDecoder(() => {});
+  decode(Buffer.alloc(199, 49));
+  assert.throws(() => decode(Buffer.from("1")), /RDP frame header/);
+});
+
+test("accepts Firefox's packet-length limit and rejects one byte more", () => {
+  const atLimit = createPacketDecoder(() => {});
+  assert.doesNotThrow(() => atLimit(Buffer.from(`${2 ** 40}:`)));
+  const aboveLimit = createPacketDecoder(() => {});
+  assert.throws(() => aboveLimit(Buffer.from(`${2 ** 40 + 1}:`)), /RDP frame length/);
 });
 
 test("turns malformed server frames into connection failures", async () => {

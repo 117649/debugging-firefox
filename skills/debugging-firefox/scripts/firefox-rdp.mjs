@@ -1,5 +1,11 @@
 import net from "node:net";
 
+function validateTimeout(timeoutMs) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2147483647) {
+    throw new TypeError("Firefox RDP timeoutMs must be an integer from 1 to 2147483647");
+  }
+}
+
 export function encodePacket(packet) {
   const json = JSON.stringify(packet);
   return Buffer.from(`${Buffer.byteLength(json)}:${json}`, "utf8");
@@ -11,11 +17,14 @@ export function createPacketDecoder(onPacket) {
     buffer = Buffer.concat([buffer, chunk]);
     for (;;) {
       const colon = buffer.indexOf(58);
-      if (colon < 0) return;
+      if (colon < 0 && buffer.length < 200) return;
+      if (colon < 0 || colon >= 200) throw new Error("Invalid RDP frame header");
       const prefix = buffer.subarray(0, colon).toString("ascii");
       if (!/^(0|[1-9]\d*)$/.test(prefix)) throw new Error(`Invalid RDP frame length: ${prefix}`);
       const length = Number(prefix);
-      if (!Number.isSafeInteger(length)) throw new Error(`Invalid RDP frame length: ${prefix}`);
+      if (!Number.isSafeInteger(length) || length > 2 ** 40) {
+        throw new Error(`Invalid RDP frame length: ${prefix}`);
+      }
       const end = colon + 1 + length;
       if (buffer.length < end) return;
       onPacket(JSON.parse(buffer.subarray(colon + 1, end).toString("utf8")));
@@ -29,6 +38,11 @@ export class FirefoxRdpClient {
     if (host !== "127.0.0.1") throw new TypeError("Firefox RDP client only accepts 127.0.0.1");
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       throw new TypeError("Firefox RDP port must be an integer from 1 to 65535");
+    }
+    validateTimeout(timeoutMs);
+    if (localPort !== undefined &&
+        (!Number.isInteger(localPort) || localPort < 0 || localPort > 65535)) {
+      throw new TypeError("Firefox RDP localPort must be an integer from 0 to 65535");
     }
     Object.assign(this, { host, port, localPort, timeoutMs });
     this.packets = [];
@@ -46,6 +60,7 @@ export class FirefoxRdpClient {
   }
 
   next(predicate, timeoutMs = this.timeoutMs, label = "RDP packet") {
+    validateTimeout(timeoutMs);
     if (this.terminalError) return Promise.reject(this.terminalError);
     const index = this.packets.findIndex(predicate);
     if (index >= 0) return Promise.resolve(this.packets.splice(index, 1)[0]);
@@ -112,6 +127,7 @@ export class FirefoxRdpClient {
   }
 
   evaluate(text, timeoutMs = this.timeoutMs) {
+    validateTimeout(timeoutMs);
     const evaluation = this.evaluationTail.then(async () => {
       if (this.terminalError) throw this.terminalError;
       if (!this.consoleActor) throw new Error("RDP parent-process target is not attached");
@@ -142,6 +158,7 @@ export class FirefoxRdpClient {
     label = "Firefox predicate",
     timeoutMs = this.timeoutMs,
   } = {}) {
+    validateTimeout(timeoutMs);
     const deadline = Date.now() + timeoutMs;
     let value;
     let timer;
