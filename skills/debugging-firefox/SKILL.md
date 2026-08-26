@@ -42,7 +42,7 @@ An unhealthy preflight permits one pre-authorized restart with baseline and rele
 
 ## Common mistakes
 
-Do not keep concurrent task-owned sockets, replay a timed-out mutation, restart without separate approval, or use `gBrowser.adoptTab()` as native-drag proof.
+Never trust a launcher PID/exit as readiness, invent `Services.sys.mjs`, replay timed-out mutations, restart without approval, or use `gBrowser.adoptTab()` as drag proof.
 
 ## Boundary
 

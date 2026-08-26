@@ -21,6 +21,8 @@ An explicitly supplied executable overrides discovery. Validate it as the exact 
 
 Record whether Firefox and the listener predated the task and whether this task launched either. Do not launch merely to inspect a supplied path. Connect only to `127.0.0.1` at the caller-selected port.
 
+On Windows, a `Start-Process` result or exited PID may be only the Firefox command-line forwarding helper, not the listener owner. Pass the exact executable as `-FilePath` and its tokens through `-ArgumentList`. Wait boundedly for the selected loopback port, resolve its owning Firefox process and retained instance, then run the full RDP preflight. Direct invocation is not a substitute for these checks.
+
 ## Ownership and baseline
 
 - Establish one explicit mutation owner for the Firefox instance. Other tasks remain read-only and use separate sockets, or close their clients and explicitly hand off mutation ownership. If coordination is unavailable or target identity is uncertain, stop before mutation.
@@ -42,6 +44,8 @@ Begin with a small read-only probe using the tested client. Record the root gree
 If any part is missing, return `unsupported` with the exact missing capability and detected target identity. Do not guess alternate actors, packets, or privileged globals. Probe every version-sensitive API needed by the planned matrix before mutation.
 
 This gate is the listener preflight and runs before any task operation. Connection refusal/reset, a malformed or missing greeting, or timeout/transport failure in a mandatory capability marks the listener unhealthy. Dispose that client. With prior restart authorization, a complete baseline, and exclusive ownership, take the restart checkpoint immediately instead of opening a replacement socket to the same listener. Without those prerequisites, stop before the task call. Rerun the full gate once on the replacement instance; another unhealthy result stops without a task operation or second restart. Treat an explicit unsupported-capability response as incompatibility, not listener failure.
+
+For privileged evaluation that needs XPCOM services, probe and use `globalThis.Services` in the selected target. Mainline Firefox 117 removed the legacy `resource://gre/modules/Services.jsm`; it was not renamed to `Services.sys.mjs`. If the global is absent, use the legacy JSM only after the target package or source proves it exists and the target exposes a compatible JSM importer; otherwise return `unsupported`. ESR and derived builds follow their actual capabilities, not the mainline version number. This boundary comes from `xpc::InitGlobalObject`, `mozJSModuleLoader::DefineJSServices`, and Firefox [bug 1780695](https://bugzilla.mozilla.org/show_bug.cgi?id=1780695).
 
 ## Same-process XPI install and readiness
 
