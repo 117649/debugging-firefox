@@ -21,12 +21,15 @@ An explicitly supplied executable overrides discovery. Validate it as the exact 
 
 Record whether Firefox and the listener predated the task and whether this task launched either. Do not launch merely to inspect a supplied path. Connect only to `127.0.0.1` at the caller-selected port.
 
+Before starting a listener, prove the selected profile and packaged defaults make `devtools.debugger.force-local` effectively true; do not silently change the user's preference. After start and before RDP connection, verify the OS listener is bound only to loopback. A wildcard (`0.0.0.0` or `::`) or non-loopback bind blocks use. Firefox 154 enforces this in [`SocketListener.open`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L393-L441) and [`SocketListener.host`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L482-L490).
+
 On Windows, a `Start-Process` result or exited PID may be only the Firefox command-line forwarding helper, not the listener owner. Pass the exact executable as `-FilePath` and its tokens through `-ArgumentList`. Wait boundedly for the selected loopback port, resolve its owning Firefox process and retained instance, then run the full RDP preflight. Direct invocation is not a substitute for these checks.
 
 ## Ownership and baseline
 
 - Establish one explicit mutation owner for the Firefox instance. Other tasks remain read-only and use separate sockets, or close their clients and explicitly hand off mutation ownership. If coordination is unavailable or target identity is uncertain, stop before mutation.
 - Use one live task-owned socket at a time. Do not share it across tasks or reconnect per evaluation. After invalidation or restart, dispose the old client before the single authorized sequential replacement.
+- Normally omit `localPort` or use `0` for a sequential replacement; reusing a fixed client port can fail with `EADDRINUSE` while the prior socket is in `TIME_WAIT`.
 - Capture opaque window/tab order and selection, feature state, listener/process ownership, add-on state, and only the URLs/titles needed as evidence. Choose restoration invariants before mutation.
 - Keep task-operation sentinels and live identities, including original method references, in a uniquely named property on a stable browser window. Keep only serializable restoration invariants in the client.
 - For browser-managed groups or containers, retain group identity and neighboring anchors. Treat a global native index as diagnostic unless the requested behavior owns it.
@@ -43,9 +46,9 @@ Begin with a small read-only probe using the tested client. Record the root gree
 
 If any part is missing, return `unsupported` with the exact missing capability and detected target identity. Do not guess alternate actors, packets, or privileged globals. Probe every version-sensitive API needed by the planned matrix before mutation.
 
-This gate is the listener preflight and runs before any task operation. Connection refusal/reset, a malformed or missing greeting, or timeout/transport failure in a mandatory capability marks the listener unhealthy. Dispose that client. With prior restart authorization, a complete baseline, and exclusive ownership, take the restart checkpoint immediately instead of opening a replacement socket to the same listener. Without those prerequisites, stop before the task call. Rerun the full gate once on the replacement instance; another unhealthy result stops without a task operation or second restart. Treat an explicit unsupported-capability response as incompatibility, not listener failure.
+This gate is the listener preflight and runs before any task operation. A connected socket that receives no root greeting may be waiting on Firefox's connection-approval prompt: [`Prompt.Server.authenticate`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/auth.js#L148-L204) invokes [`Server.defaultAllowConnection`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/prompt.js#L125-L164) before [`ServerSocketConnection._handle`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L574-L624) allows the connection. Before connecting, tell the user and choose a visible bounded deadline long enough for approval; keep that one socket while the user accepts or declines. Do not automate or bypass the prompt, open replacement sockets, or restart. If the deadline expires while prompt state is unknown, dispose the socket and report approval unresolved rather than listener failure. Only after approval is resolved or the prompt is ruled out does connection refusal/reset, a malformed or missing greeting, or timeout/transport failure in a mandatory capability mark the listener unhealthy. Dispose that client. With prior restart authorization, a complete baseline, and exclusive ownership, take the restart checkpoint immediately instead of opening a replacement socket to the same listener. Without those prerequisites, stop before the task call. Rerun the full gate once on the replacement instance; another unhealthy result stops without a task operation or second restart. Treat an explicit unsupported-capability response as incompatibility, not listener failure.
 
-For privileged evaluation that needs XPCOM services, probe and use `globalThis.Services` in the selected target. Mainline Firefox 117 removed the legacy `resource://gre/modules/Services.jsm`; it was not renamed to `Services.sys.mjs`. If the global is absent, use the legacy JSM only after the target package or source proves it exists and the target exposes a compatible JSM importer; otherwise return `unsupported`. ESR and derived builds follow their actual capabilities, not the mainline version number. This boundary comes from `xpc::InitGlobalObject`, `mozJSModuleLoader::DefineJSServices`, and Firefox [bug 1780695](https://bugzilla.mozilla.org/show_bug.cgi?id=1780695).
+For privileged evaluation that needs XPCOM services, probe and use `globalThis.Services` in the selected target. Mainline Firefox 117 removed the legacy `resource://gre/modules/Services.jsm`; it was not renamed to `Services.sys.mjs`. If the global is absent, use the legacy JSM only after the target package or source proves it exists and the target exposes a compatible JSM importer; otherwise return `unsupported`. ESR and derived builds follow their actual capabilities, not the mainline version number. This boundary comes from [`xpc::InitGlobalObject`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_117_0_RELEASE/js/xpconnect/src/nsXPConnect.cpp#L505-L523), [`mozJSModuleLoader::DefineJSServices`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_117_0_RELEASE/js/xpconnect/loader/mozJSModuleLoader.cpp#L1890-L1913), and Firefox [bug 1780695](https://bugzilla.mozilla.org/show_bug.cgi?id=1780695).
 
 ## Same-process XPI install and readiness
 
@@ -71,6 +74,42 @@ For a native cross-window tab-drag regression:
 
 Direct `gBrowser.adoptTab()` bypasses the native drop handler and cannot prove this regression.
 
+## Restartless command-line listener shutdown
+
+Closing the RDP client does not stop a listener created by `--start-debugger-server`: the startup handler deliberately sets `DevToolsServer.keepAlive = true`. Do not hide Firefox's remote-control cue with CSS or remove its DOM attribute; that conceals the security indicator while the port remains open. The cue is not port proof because [`gRemoteControl.getRemoteControlComponent`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/browser/base/content/browser.js#L4125-L4145) also covers Marionette and Remote Agent.
+
+Use the internal path below only when the task started that command-line listener on a pre-existing Firefox, the target's exact source or packaged modules still match the named symbols, every other task has released the instance, no foreign RDP connection remains established, and the distinct server reports exactly one listener. Foreign-client release is a coordination fact, not a mechanically provable condition: Firefox exposes no public per-client ownership API, so uncertainty blocks shutdown. `closeAllSocketListeners()` is broad and closes every listener and accepted connection on that server. This path was live-proven on a Firefox-derived 154.0.1 build; it is not a public or cross-version API.
+
+Evaluate this through the retained parent-process connection. If a healthy client was already closed intentionally, open exactly one cleanup connection only after the ownership checks, using the approval-prompt rule above and an ephemeral `localPort`; this is not a retry of an unhealthy listener. Releasing the temporary requester before closure preserves the startup requester's loader reference. The executing RDP socket closing before an evaluation reply is expected success evidence, not a reason to reconnect:
+
+```javascript
+(() => {
+  const api = ChromeUtils.importESModule(
+    "resource://devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs",
+    { global: "shared" }
+  );
+  const requester = {};
+  const loader = api.useDistinctSystemPrincipalLoader(requester);
+  let server;
+  try {
+    ({ DevToolsServer: server } = loader.require(
+      "resource://devtools/server/devtools-server.js"
+    ));
+    if (server.listeningSockets !== 1 ||
+        typeof server.closeAllSocketListeners !== "function") {
+      return JSON.stringify({ safe: false, listeners: server.listeningSockets });
+    }
+  } finally {
+    api.releaseDistinctSystemPrincipalLoader(requester);
+  }
+  server.closeAllSocketListeners();
+})()
+```
+
+Never call `DevToolsServer.destroy()` or synthesize `quit-application`. Verify shutdown out of band with an explicit negative loopback-port probe plus proof that the retained Firefox PID remains alive; an empty error-suppressed socket query is not evidence. If source, symbol, ownership, or listener-count checks differ, leave the listener running until ordinary Firefox exit or a separately approved restart.
+
+Firefox 154 source basis: [`DevToolsStartup.handleDevToolsServerFlag`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/startup/DevToolsStartup.sys.mjs#L1117-L1194), [`useDistinctSystemPrincipalLoader`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/loader/DistinctSystemPrincipalLoader.sys.mjs#L18-L43), [`DevToolsServer.closeAllSocketListeners`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/server/devtools-server.js#L235-L292), and [`SocketListener.close`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L463-L480).
+
 ## Restart checkpoint
 
 Restart only for a pre-authorized unhealthy listener preflight or after restartless operation is shown insufficient and the user separately approves it. Capture the executable/profile, original instance sentinel, PID/process tree, listener, serializable session invariants, relevant add-on state, and task-owned resources. Require every other known task to release mutation ownership and close its client; uncertain release blocks restart.
@@ -84,7 +123,7 @@ Wait for feature readiness and authoritative session restoration, repeat the int
 | Initial ownership | Required end state |
 |---|---|
 | Firefox and listener pre-existed | Close only this task's client; leave both running. |
-| Task started listener on pre-existing Firefox | Close the client; leave Firefox running and report that the listener persists until Firefox exits. |
+| Task started listener on pre-existing Firefox | Use the source-gated restartless shutdown when its ownership and compatibility checks pass; otherwise close the client, leave Firefox running, and report the retained listener. |
 | Task launched dedicated Firefox | Close the client, terminate only the recorded owned process tree, and verify its listener stopped. |
 
 In `finally`, restore task-owned globals, wrapped methods, preferences, tabs/groups, window selection/focus, and feature layout. Do not uninstall an add-on the user asked to install or update, and never clean up another task's resources.

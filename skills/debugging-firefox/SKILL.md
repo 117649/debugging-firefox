@@ -13,19 +13,19 @@ Treat the live Firefox session as user data. Use one task-owned loopback RDP soc
 
 ## Target and ownership
 
-An explicitly supplied executable overrides discovery. Resolve that exact file, preserve spaces and non-ASCII characters with argument arrays, identify its reported version when safe, and never substitute another installation. If no path is supplied, discover without hardcoded locations across desktop Release, ESR, Beta, Developer Edition, Nightly, custom, portable/extracted, and side-by-side installations.
+A supplied executable overrides discovery. Resolve that file, preserve spaces and non-ASCII paths with argument arrays, identify its version when safe, and never substitute it. Otherwise discover without hardcoded locations across desktop Release, ESR, Beta, Developer Edition, Nightly, custom, portable/extracted, and side-by-side installations.
 
-On macOS require the Firefox binary inside the application bundle; on Windows and Linux accept the caller-selected executable or launcher. A supplied path does not authorize launch; launch only when a debugger listener is needed and ownership permits.
+On macOS require the binary inside the application bundle; elsewhere accept the selected executable or launcher. A path does not authorize launch; launch only when a debugger listener is needed and ownership permits.
 
-Use `127.0.0.1` and the caller-selected port. Before launch, detect handoff to a different running instance and profile locks. Stop rather than adding `--no-remote`, creating/selecting a profile, or changing channels.
+Before starting, prove effective `devtools.debugger.force-local`; afterward verify the selected port binds only to `127.0.0.1`. Wildcard or non-loopback binding blocks use. Before launch, detect handoff to another instance and profile locks. Stop rather than adding `--no-remote`, creating/selecting a profile, or changing channels.
 
 Allow one mutation owner per instance and one live task-owned socket at a time. Other tasks may use read-only sockets; mutation requires handoff. At contention, report the exact retained executable, open no competing mutation socket, and state restart requires ownership release plus separate approval.
 
 ## Workflow
 
 1. Capture the baseline: target identity, browser state, ownership, and privacy-minimized restoration invariants.
-2. Before any operation, connect once with [scripts/firefox-rdp.mjs](scripts/firefox-rdp.mjs). Require root greeting, `listProcesses`, parent descriptor, `getTarget`, console actor, and `evaluateJSAsync`; timeout/transport failure takes the restart rule; explicit unsupported stops; never retry that listener.
-3. Read [references/live-testing.md](references/live-testing.md) before mutation, behavior proof, or restart. Install/reload claims require install/readiness and restoration; behavior claims require an exercised user-facing/native path. Otherwise mark behavior unverified and continue install-only work.
+2. Read [references/live-testing.md](references/live-testing.md) before listener start/connection, mutation, behavior proof, or restart. Install/reload claims require install/readiness and restoration; behavior claims require an exercised user-facing/native path. Otherwise mark behavior unverified and continue install-only work.
+3. Connect once with [scripts/firefox-rdp.mjs](scripts/firefox-rdp.mjs). Require root greeting, `listProcesses`, parent descriptor, `getTarget`, console actor, and `evaluateJSAsync`; apply the reference's approval, unhealthy, and unsupported branches; never retry that listener.
 4. After dispatch, a timeout invalidates the socket; one authorized sequential replacement may only query task-owned authoritative state once before deciding whether retry is safe.
 5. In `finally`, restore only task-owned changes; compare captured restoration invariants with the baseline; close the client; report retained Firefox listeners/processes.
 
