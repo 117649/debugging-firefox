@@ -17,6 +17,8 @@ A supplied executable overrides discovery. Resolve that file, preserve spaces an
 
 On macOS require the binary inside the application bundle; elsewhere accept the selected executable or launcher. A path does not authorize launch; launch only when a debugger listener is needed and ownership permits.
 
+Before invoking `--start-debugger-server`, classify the selected target by existing listener, exact instance identity, and an independently proven real browser window. If a compatible listener already exists, launch nothing. If no selected-target process exists, launch Firefox normally without the debugger flag, prove its real browser window, then invoke the debugger flag separately. If that real window already exists, skip the normal launch and invoke the flag separately. Processes without a real window are neither cold-start proof nor an attachable existing window: wait only for a normal launch this task just started; otherwise stop. Never use a combined cold debugger-server launch.
+
 Before starting, prove effective `devtools.debugger.force-local`; afterward verify the selected port binds only to `127.0.0.1`. Wildcard or non-loopback binding blocks use. Before launch, detect handoff to another instance and profile locks. Stop rather than adding `--no-remote`, creating/selecting a profile, or changing channels.
 
 Allow one mutation owner per instance and one live task-owned socket at a time. Other tasks may use read-only sockets; mutation requires handoff. At contention, report the exact retained executable, open no competing mutation socket, and state restart requires ownership release plus separate approval.
@@ -36,13 +38,14 @@ An unhealthy preflight permits one pre-authorized restart with baseline and rele
 | Need | Gate |
 |---|---|
 | Target | Exact file, or fallback discovery |
+| Launch | Existing listener, existing real window, cold start, or stop |
 | Mutation | Explicit owner or handoff |
 | Readiness | Bounded predicate; authoritative check after timeout |
 | Proof | Actual path plus restoration |
 
 ## Common mistakes
 
-Never trust a launcher PID/exit as readiness, invent `Services.sys.mjs`, replay timed-out mutations, restart without approval, or use `gBrowser.adoptTab()` as drag proof.
+Never treat process presence, launcher PID/exit, `MainWindowHandle`, or a listening port as proof of a real browser window; invent `Services.sys.mjs`; replay timed-out mutations; restart without approval; or use `gBrowser.adoptTab()` as drag proof.
 
 ## Boundary
 
