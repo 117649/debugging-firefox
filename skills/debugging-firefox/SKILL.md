@@ -17,7 +17,7 @@ A supplied executable overrides discovery. Resolve that file, preserve spaces an
 
 On macOS require the binary inside the application bundle; elsewhere accept the selected executable or launcher. A path does not authorize launch; launch only when a debugger listener is needed and ownership permits.
 
-Before invoking `--start-debugger-server`, classify the selected target by existing listener, exact instance identity, and an independently proven real browser window. If a compatible listener already exists, launch nothing. If no selected-target process exists, launch Firefox normally without the debugger flag, prove its real browser window, then invoke the debugger flag separately. If that real window already exists, skip the normal launch and invoke the flag separately. Processes without a real window are neither cold-start proof nor an attachable existing window: wait only for a normal launch this task just started; otherwise stop. Never use a combined cold debugger-server launch.
+Before invoking `--start-debugger-server`, classify the selected target by existing listener, exact instance identity, and an independently proven real browser window. If a compatible listener already exists, launch nothing. If no selected-target process exists, launch Firefox normally without the debugger flag, prove its real browser window, then invoke the debugger flag separately. If that real window already exists, skip the normal launch and invoke the flag separately. Processes without a real window are neither cold-start proof nor an attachable existing window: wait only for a normal launch this task just started; otherwise stop. Never use a combined cold debugger-server launch. Normal launch, window proof, and diagnostic logging do not authorize the `new-window` option in either accepted dash spelling, `headless`, `screenshot`, hidden/no-new-window process settings, or any other argument that changes visible startup.
 
 Before starting, prove effective `devtools.debugger.force-local`; afterward verify the selected port binds only to `127.0.0.1`. Wildcard or non-loopback binding blocks use. Before launch, detect handoff to another instance and profile locks. Stop rather than adding `--no-remote`, creating/selecting a profile, or changing channels.
 
@@ -27,11 +27,11 @@ Allow one mutation owner per instance and one live task-owned socket at a time. 
 
 1. Capture the baseline: target identity, browser state, ownership, and privacy-minimized restoration invariants.
 2. Read [references/live-testing.md](references/live-testing.md) before listener start/connection, mutation, behavior proof, or restart. Install/reload claims require install/readiness and restoration; behavior claims require an exercised user-facing/native path. Otherwise mark behavior unverified and continue install-only work.
-3. Connect once with [scripts/firefox-rdp.mjs](scripts/firefox-rdp.mjs). Require root greeting, `listProcesses`, parent descriptor, `getTarget`, console actor, and `evaluateJSAsync`; apply the reference's approval, unhealthy, and unsupported branches; never retry that listener.
-4. After dispatch, a timeout invalidates the socket; one authorized sequential replacement may only query task-owned authoritative state once before deciding whether retry is safe.
+3. Request the listener once, then follow the reference's OS/log evidence recipe and make the first real connection with [scripts/firefox-rdp.mjs](scripts/firefox-rdp.mjs); that attempt is mandatory, not a retry. If `tcpAccepted` remains false and every just-started task-owned readiness predicate passes, dispose that client and make at most one sequential connection retry. Once `tcpAccepted` is true, keep that socket through approval and the root greeting, `listProcesses`, parent descriptor, `getTarget`, console actor, and `evaluateJSAsync` gates; never reconnect to that listener.
+4. After dispatch, a timeout invalidates the socket; one authorized sequential replacement may only query task-owned authoritative state once before deciding whether task-operation replay is safe.
 5. In `finally`, restore only task-owned changes; compare captured restoration invariants with the baseline; close the client; report retained Firefox listeners/processes.
 
-An unhealthy preflight permits one pre-authorized restart with baseline and released ownership. Discard protocol state; rediscover and rerun preflight once. A second unhealthy result or explicit unsupported response stops.
+An explicit listener-open failure, or an unhealthy preflight after the permitted pre-accept attempt(s), permits one pre-authorized restart with baseline and released ownership. Discard protocol state; rediscover and rerun preflight once. A second unhealthy result or explicit unsupported response stops.
 
 ## Quick reference
 
@@ -39,13 +39,14 @@ An unhealthy preflight permits one pre-authorized restart with baseline and rele
 |---|---|
 | Target | Exact file, or fallback discovery |
 | Launch | Existing listener, existing real window, cold start, or stop |
+| Listener | One request; mandatory first connection; at most one pre-accept retry |
 | Mutation | Explicit owner or handoff |
 | Readiness | Bounded predicate; authoritative check after timeout |
 | Proof | Actual path plus restoration |
 
 ## Common mistakes
 
-Never treat process presence, launcher PID/exit, `MainWindowHandle`, or a listening port as proof of a real browser window; invent `Services.sys.mjs`; replay timed-out mutations; restart without approval; or use `gBrowser.adoptTab()` as drag proof.
+Never treat process presence, launcher PID/exit, `MainWindowHandle`, or a listening port as proof of a real browser window; substitute port polling for the first real RDP attempt; change visible launch merely to capture logs; invent `Services.sys.mjs`; replay timed-out mutations; restart without approval; or use `gBrowser.adoptTab()` as drag proof.
 
 ## Boundary
 

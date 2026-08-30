@@ -133,6 +133,39 @@ test("validates an optional caller-selected local port", () => {
   }
 });
 
+test("distinguishes refusal before TCP acceptance", async () => {
+  const server = net.createServer();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const port = server.address().port;
+  await closeServer(server);
+  const client = new FirefoxRdpClient({ port, timeoutMs: 250 });
+
+  try {
+    await assert.rejects(client.connect(), /ECONNREFUSED/);
+    assert.equal(client.tcpAccepted, false);
+  } finally {
+    await client.close();
+  }
+});
+
+test("records TCP acceptance before a missing root greeting", async () => {
+  let connections = 0;
+  const server = net.createServer(() => connections++);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const client = new FirefoxRdpClient({ port: server.address().port, timeoutMs: 20 });
+
+  try {
+    await assert.rejects(client.connect(), /root greeting timed out/);
+    assert.equal(client.tcpAccepted, true);
+    assert.equal(connections, 1);
+  } finally {
+    await client.close();
+    await closeServer(server);
+  }
+});
+
 for (const capability of ["listProcesses", "getTarget", "evaluateJSAsync"]) {
   for (const sendError of [true, false]) {
     test(`${capability} ${sendError ? "protocol errors" : "timeouts"} name the capability`, async () => {

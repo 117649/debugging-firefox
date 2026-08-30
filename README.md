@@ -36,6 +36,8 @@ C:\Program Files\Mozilla Firefox\firefox.exe
 
 On macOS, supply the binary inside the application bundle, such as `/Applications/Firefox.app/Contents/MacOS/firefox`, not the `.app` bundle itself. An explicit path overrides discovery, but it does not itself authorize a launch; the skill launches only when a debugger listener is needed and ownership permits it.
 
+Permission to launch normally, prove a real window, or capture diagnostics does not authorize Firefox's `new-window` option in either accepted dash spelling, headless/screenshot mode, hidden/no-new-window process settings, or a different profile or executable.
+
 ## Offline test and validation
 
 From the repository root, run the deterministic offline suite, whitespace check, and current-spec validation:
@@ -52,7 +54,7 @@ The test starts only its local mock RDP server. It does not download, launch, co
 
 Read `skills/debugging-firefox/references/live-testing.md` before any live mutation. Record the highest completed level only: static, package, protocol, install/readiness, behavior, and restoration. A build, package check, or successful install is not proof of the user-facing runtime path.
 
-Live work requires a resolved executable and an explicitly selected loopback port, one mutation owner, one task-owned socket, a captured baseline, and a restoration plan. Before the first real RDP operation, the retained socket must pass the greeting and mandatory-capability gate. If approval remains unresolved, stop without reconnect or restart. A pre-authorized unhealthy listener goes directly to one orderly Firefox/listener restart after all other tasks release ownership; an explicit unsupported-capability response stops without restart. Do not retry the same listener on a replacement socket. If recovery or any prerequisite fails, stop before the operation and report the unverified boundary.
+Live work requires a resolved executable and an explicitly selected loopback port, one mutation owner, one live task-owned socket, a captured baseline, and a restoration plan. Request the listener once and make the first real RDP attempt after the safety/evidence gate; empty suppressed Windows enumeration is not absence. A just-started task-owned listener permits at most one new-client retry only when the first client never reached TCP acceptance and the target, ownership, OS, and Firefox-log predicates still pass. After TCP acceptance, keep that socket through approval, greeting, and mandatory capabilities; never reconnect to the same listener. A pre-authorized unhealthy listener may take one orderly restart after all other tasks release ownership; unsupported capability stops without restart. If recovery or any prerequisite fails, stop before the operation and report the unverified boundary.
 
 ## Primary documentation
 

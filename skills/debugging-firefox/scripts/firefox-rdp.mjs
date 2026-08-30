@@ -45,6 +45,7 @@ export class FirefoxRdpClient {
       throw new TypeError("Firefox RDP localPort must be an integer from 0 to 65535");
     }
     Object.assign(this, { host, port, localPort, timeoutMs });
+    this.tcpAccepted = false;
     this.packets = [];
     this.waiters = [];
     this.terminalError = null;
@@ -102,7 +103,10 @@ export class FirefoxRdpClient {
     this.socket.on("close", () => this.terminate(new Error("RDP socket closed")));
     try {
       await new Promise((resolve, reject) => {
-        this.socket.once("connect", resolve);
+        this.socket.once("connect", () => {
+          this.tcpAccepted = true;
+          resolve();
+        });
         this.socket.once("error", reject);
       });
       this.hello = await this.next(packet => packet.from === "root" && packet.applicationType,
