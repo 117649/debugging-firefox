@@ -360,21 +360,27 @@ test("reuses one socket for JSON evaluation and bounded predicate polling", asyn
 test("packet timeout invalidates the client before late evaluation replies", async () => {
   let evaluations = 0;
   const { server } = await createEvaluationServer(({ packet, send, socket }) => {
-    const resultID = packet.text === "void 0" ? "preflight" : `evaluation${++evaluations}`;
+    if (packet.text === "void 0") {
+      send({ from: "console1", resultID: "preflight" });
+      send({ from: "console1", type: "evaluationResult", resultID: "preflight",
+        hasException: false, result: 0 });
+      return;
+    }
+    const resultID = `evaluation${++evaluations}`;
     setTimeout(() => {
       if (socket.destroyed) return;
       send({ from: "console1", resultID });
       send({ from: "console1", type: "evaluationResult", resultID,
         hasException: false, result: evaluations });
-    }, packet.text === "void 0" ? 0 : 60);
+    }, 60);
   });
-  const client = new FirefoxRdpClient({ port: server.address().port, timeoutMs: 20 });
+  const client = new FirefoxRdpClient({ port: server.address().port, timeoutMs: 250 });
 
   try {
     await client.connect();
-    await assert.rejects(client.evaluate("first"),
+    await assert.rejects(client.evaluate("first", 20),
       /evaluateJSAsync timed out after 20 ms/);
-    await assert.rejects(client.evaluate("second"),
+    await assert.rejects(client.evaluate("second", 20),
       /evaluateJSAsync timed out after 20 ms/);
     assert.equal(evaluations, 1);
     assert.equal(client.socket.destroyed, true);
