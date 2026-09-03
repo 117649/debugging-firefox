@@ -54,19 +54,18 @@ The test starts only its local mock RDP server. It does not download, launch, co
 
 Read `skills/debugging-firefox/references/live-testing.md` before any live mutation. Record the highest completed level only: static, package, protocol, install/readiness, behavior, and restoration. A build, package check, or successful install is not proof of the user-facing runtime path.
 
-Live work requires a resolved executable and an explicitly selected loopback port, one mutation owner, one live task-owned socket, a captured baseline,
-and a restoration plan. Resolve listener and process presence before window evidence: when neither exists, launch Firefox normally first and enumerate
-its window afterward. For an existing or task-started process, real-window evidence is confirmed present, confirmed absent, or
-unavailable/inconclusive. Recover unavailable evidence through one fresh tool service/session and one supported native-window list/state operation
-selected from that session's current documentation. A stale API failure before enumeration may be corrected once in the same session; browser-only or
-uncorrelatable inventory is not absence. Do not restart Firefox for recovery. Request the listener at most once per retained Firefox instance and,
-unless logs already prove an explicit open failure, make the first real RDP attempt after the safety/evidence gate; empty suppressed Windows
-enumeration is not absence. A just-started task-owned listener permits at most one new-client retry only when the first client never reached TCP
-acceptance and the target, ownership, OS, and Firefox-log predicates still pass. After TCP acceptance, keep that socket through initial approval and
-capability preflight; only the explicitly scoped post-dispatch, restart, and cleanup branches may replace it later. A pre-authorized unhealthy
-listener may take one orderly restart after all other tasks release ownership; the replacement receives its own single listener request and full
-preflight cycle, while unsupported capability stops without restart. If recovery or any prerequisite fails, stop before the operation and report the
-unverified boundary.
+Live work requires a resolved executable and selected loopback port, one mutation owner, one task-owned socket, a captured baseline, and a restoration
+plan. Resolve an existing listener first. Otherwise prove the exact target will accept the server flag without opening a window, then prove Firefox's
+profile/channel-specific command-forwarder belongs to the retained process. On Windows this is the hidden `Mozilla_*_RemoteWindow`, not a DevTools
+listener or visible browser window. If Firefox is absent, launch it normally without the flag, wait for that forwarder, then request the listener
+separately. Never cold-launch with the debugger flag.
+
+A failed visible-window tool does not block attachment after exact handler and forwarder proofs. After the first real RDP connection, Firefox must report a
+`navigator:browser` window with `gBrowser` and completed delayed startup; every task-affected window must be ready before mutation. Request the listener
+at most once per retained instance. A just-started task-owned listener permits at most one new-client retry only when the first client never reached
+TCP acceptance and all target, forwarder, ownership, OS, and log predicates still pass. After TCP acceptance, keep that socket through approval and
+capability preflight. Only the reference's post-dispatch, restart, and cleanup branches may replace it. If any prerequisite fails, stop before the
+operation and report the unverified boundary.
 
 ## Primary documentation
 

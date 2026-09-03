@@ -15,32 +15,37 @@ Treat the live Firefox session as user data. Use one task-owned loopback RDP soc
 
 A supplied executable overrides discovery. Resolve that file, preserve spaces and non-ASCII executable paths with native file-path APIs and arbitrary argument boundaries with a true argument-vector API, identify its version when safe, and never substitute it. Otherwise discover without hardcoded locations across desktop Release, ESR, Beta, Developer Edition, Nightly, custom, portable/extracted, and side-by-side installations.
 
-On macOS require the binary inside the application bundle; elsewhere accept the selected executable or launcher. A path does not authorize launch; launch only when a debugger listener is needed and ownership permits.
+On macOS require the binary inside the application bundle; elsewhere require the actual Firefox browser executable before starting a listener. A
+wrapper or portable launcher may be inspected but cannot authorize listener start; stop and request the browser executable instead of substituting
+one. A path does not authorize launch; launch only when a debugger listener is needed and ownership permits.
 
-Before invoking `--start-debugger-server`, classify in this precedence: compatible listener, selected-target process presence and exact instance identity, then real browser-window evidence for an existing or task-started target. If no selected-target process and no listener exist, take the cold-start branch immediately: launch Firefox normally without the debugger flag before any window enumeration, prove the new real browser window, then invoke the debugger flag separately. If that real window already exists, skip the normal launch and invoke the flag separately. Processes confirmed by trusted enumeration to lack a real window are neither cold-start proof nor an attachable existing window: wait only for a normal launch this task just started or a trusted currently-starting user launch; otherwise stop. Never use a combined cold debugger-server launch. Normal launch, window proof, and diagnostic logging do not authorize the `new-window` option in either accepted dash spelling, `headless`, `screenshot`, hidden/no-new-window process settings, or any other argument that changes visible startup.
+Before any listener invocation, prove the exact target's command handler will consume the flag and suppress default window creation. Firefox 156
+requires effective `devtools.debugger.remote-enabled` and `devtools.chrome.enabled` true and `devtools.policy.disabled` false. Also prove
+`devtools.debugger.force-local` true. Do not change a preference or policy; for other versions or derived builds, inspect the equivalent handler gates.
 
-Window enumeration begins only after a selected-target process exists, either pre-existing or from the task-owned normal launch. With trusted
-zero-process and zero-listener evidence, the next action is that normal cold launch; do not call or recover a window enumerator first. Window evidence
-is tri-state: **confirmed browser window**, **confirmed absent**, or **unavailable/inconclusive**. Only a completed trusted enumeration correlated to
-the selected target can establish the first two. A tool bootstrap error or empty output from a sandbox-limited probe is unavailable—not absence. A
-screenshot/capture failure alone establishes neither state and does not invalidate a completed trusted listing. Keep pre-existing Firefox unchanged;
-retain a task-owned cold launch only through its bounded window wait.
+Before invoking `--start-debugger-server`, classify in this precedence: compatible listener, then Firefox's command-forwarding endpoint for the exact
+selected instance. On Windows this is the hidden profile-specific remote-command HWND, not a DevTools listener or visible browser window. Require the
+same update channel and full root profile, correlate the HWND owner to the validated main PID and executable, and revalidate immediately before the
+invocation. If the endpoint is proven, invoke the exact executable once and then prove the retained listener owner. An absent, ambiguous, or
+uncorrelatable endpoint on a pre-existing process stops before the flag; process presence and a profile lock alone are insufficient.
 
-Allocate exactly one fresh recovery service/session: prefer one fresh read-only subagent when it provides a separate tool service/session; otherwise
-use one fresh local service/session. Initialize it exactly as its current tool documentation requires and use only APIs that session actually exposes;
-never reuse a remembered import, binding, or call from another session. First-use documentation and a missing binding, module, or method before a
-supported native-window list/state operation starts are capability validation, not enumeration. Correct one such stale call at most once in the same
-fresh session from its current documentation, without a reset or another service/session. Only dispatching the supported native-window list/state
-operation spends the single enumeration attempt. Browser-tab-only inventory, no native-app/window surface, and uncorrelatable state are
-unavailable/inconclusive, not absence. A fresh-service bootstrap failure ends recovery with zero enumeration attempts but does not authorize a second
-service/session. If no supported operation exists, or its single dispatch fails or remains uncorrelatable, stop as `window evidence unavailable`, not
-process-only/no-window.
+With trusted zero-process and zero-listener evidence, launch Firefox normally without the debugger flag, correlate the task-owned retained process and
+profile, wait boundedly for its command-forwarding endpoint, then invoke the flag separately. Never use a combined cold debugger-server launch. If the
+endpoint or process disappears before invocation, cancel the invocation. Normal launch and diagnostic logging do not authorize the `new-window`
+option in either accepted dash spelling, `headless`, `screenshot`, hidden/no-new-window settings, or any argument that changes visible startup.
+
+Visible-window enumeration is optional supporting evidence, not the listener gate when exact command-forwarding proof is available. After RDP
+capability preflight, require at least one `navigator:browser` window with `gBrowser` and `gBrowserInit.delayedStartupFinished === true`; require every
+window affected by the task to be ready. A failed native-window tool, `MainWindowHandle`, or screenshot does not override this browser-side result.
+If no ready browser window appears within the bounded wait, perform no mutation and do not create a window or restart merely to satisfy the test.
 
 Clean a causally proven task-owned cold-launch tree only after revalidating its identity, exclusive current ownership, and release by other tasks;
 otherwise leave and report it. Verify a cleaned tree's selected port is closed and leave pre-existing processes untouched. Restarting the agent host
-is an outside-task fallback after active work is safe; it is never a Firefox restart. The process-only stop branch applies only to confirmed absence.
+is an outside-task fallback after active work is safe; it is never a Firefox restart.
 
-Before starting, prove effective `devtools.debugger.force-local`; afterward verify the selected port binds only to `127.0.0.1`. Wildcard or non-loopback binding blocks use. Before launch, detect handoff to another instance and profile locks. Stop rather than adding `--no-remote`, creating/selecting a profile, or changing channels.
+Afterward verify the selected port binds only to `127.0.0.1`; wildcard or non-loopback binding blocks use. Before an ordinary cold launch, detect
+handoff and any profile lock owned by another or unproven process. An exact lock owned by the proven forwarder target is expected but is neither
+forwarder proof nor a blocker. Stop rather than adding `--no-remote`, creating/selecting a profile, or changing channels.
 
 Allow one mutation owner per instance and one live task-owned socket at a time. Other tasks may use read-only sockets; mutation requires handoff. At contention, report the exact retained executable, open no competing mutation socket, and state restart requires ownership release plus separate approval.
 
@@ -59,7 +64,7 @@ An explicit listener-open failure, or an unhealthy preflight after the permitted
 | Need | Gate |
 |---|---|
 | Target | Exact file, or fallback discovery |
-| Launch | Existing listener, confirmed real window, cold start, confirmed absence, or recover unavailable evidence |
+| Launch | Existing listener, or proven handler gates plus an exact forwarder; cold start is normal launch followed by both proofs |
 | Listener | One request per retained instance; first connection mandatory unless explicit open failure is proven; at most one eligible pre-accept retry |
 | Mutation | Explicit owner or handoff |
 | Readiness | Bounded predicate; authoritative check after timeout |
@@ -67,7 +72,10 @@ An explicit listener-open failure, or an unhealthy preflight after the permitted
 
 ## Common mistakes
 
-Never treat process presence, launcher PID/exit, `MainWindowHandle`, a listening port, a failed enumerator, empty sandbox-limited output, or screenshot denial as proof that a browser window is present or absent; loop a reset after a pre-execution helper failure; substitute port polling for the first real RDP attempt; change visible launch merely to capture logs; invent `Services.sys.mjs`; replay timed-out mutations; restart without approval; or use `gBrowser.adoptTab()` as drag proof.
+Never treat process presence, a profile lock, launcher PID/exit, `MainWindowHandle`, a listening port, or a visible-window-tool result as
+command-forwarding proof. Also never do any of the following: require native visible-window proof before a verified forwarder; substitute port polling
+for the first real RDP attempt; change visible launch merely to capture logs; invent `Services.sys.mjs`; replay timed-out mutations; restart without
+approval; or use `gBrowser.adoptTab()` as drag proof.
 
 ## Boundary
 

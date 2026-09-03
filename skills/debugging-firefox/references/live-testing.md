@@ -15,49 +15,94 @@ Keep each claim at its highest completed level:
 
 ## Resolve the target before connecting
 
-Before connection, target identity comprises the resolved executable; reported product, version, or build identifier when available; detected platform; PID and start time; caller-selected loopback port; profile identity; lineage; and correlated browser-window evidence when the selected launch branch or browser-UI work requires it. After capability preflight, add a stable browser-instance sentinel before mutation.
+Before connection, target identity comprises the resolved executable; reported product, version, or build identifier when available; detected platform;
+PID and start time; caller-selected loopback port; profile identity; lineage; and command-forwarding identity when this task must start a listener.
+After capability preflight, add browser-side window readiness and a stable browser-instance sentinel before mutation.
 
-An explicitly supplied executable overrides discovery. Validate it as the exact file, preserve its path with the host's native file-path API, and use a true argument-vector API for arbitrary arguments. A directory, missing file, substituted binary, channel mismatch, unsafe handoff to a different existing Firefox instance, or locked profile blocks launch. Do not silently add isolation flags, create/select a profile, or choose another channel. Discovery is only a fallback when no executable was supplied.
+An explicitly supplied executable overrides discovery. Validate it as the exact file, preserve its path with the host's native file-path API, and use
+a true argument-vector API for arbitrary arguments. A directory, missing file, substituted binary, wrapper/launcher when listener start is needed,
+channel mismatch, or unsafe handoff blocks launch. A profile lock owned by another or unproven process blocks cold launch; an exact lock owned by the
+proven forwarder target is expected but is neither forwarder proof nor a blocker. Do not add isolation flags, create/select a profile, or change
+channels. Discovery is only a fallback when no executable was supplied.
 
-Record whether Firefox and the listener predated the task and whether this task launched either. Do not launch merely to inspect a supplied path. Connect only to `127.0.0.1` at the caller-selected port.
+Record whether Firefox and the listener predated the task and whether this task launched either. Do not launch merely to inspect a supplied path.
+Choose one bounded browser-readiness deadline for every branch. Connect only to `127.0.0.1` at the caller-selected port.
 
-Before starting a listener, prove the selected profile and packaged defaults make `devtools.debugger.force-local` effectively true; do not silently change the user's preference. Before any task operation, prove the OS listener is bound only to loopback and owned by the retained target. A wildcard (`0.0.0.0` or `::`) or non-loopback bind blocks use. The narrowly scoped first-connection branch below may resolve otherwise inconclusive Windows enumeration for a just-started task-owned listener; it never waives owner/bind proof before mutation. Firefox 154 enforces loopback in [`SocketListener.open`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L373-L417) and [`SocketListener.host`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L455-L463).
+Before any listener invocation, prove the exact target's command handler will consume `--start-debugger-server` and set `preventDefault` for a
+forwarded command. In Firefox 156, effective `devtools.policy.disabled` must be false and `devtools.debugger.remote-enabled`,
+`devtools.chrome.enabled`, and `devtools.debugger.force-local` must be true. Inspect the profile, package, policy sources, and exact-version handler;
+if any effective value or equivalent derived-build gate is unproven, stop. Do not change it. `DevToolsStartup.readCommandLineFlags`,
+`isDisabledByPolicy`, `_isRemoteDebuggingEnabled`, and `handleDevToolsServerFlag` establish the first three gates and the window-suppression behavior.
+
+Before any task operation, prove the OS listener is bound only to loopback and owned by the retained target. A wildcard (`0.0.0.0` or `::`) or
+non-loopback bind blocks use. The narrowly scoped first-connection branch below may resolve otherwise inconclusive Windows socket enumeration for a
+just-started task-owned listener; it never waives owner/bind proof before mutation. Firefox 154 enforces loopback in
+[`SocketListener.open`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L373-L417) and
+[`SocketListener.host`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L455-L463).
 
 ## Listener launch state gate
 
-Classify in this precedence order: existing listener, selected-target process presence and identity, then real browser-window state only for an existing or task-started target. Trusted no-process and no-listener evidence selects cold start without a pre-launch window-enumeration attempt. Do not invoke the debugger flag until the selected target fits one row:
+Classify in this precedence order: existing listener, exact Firefox command-forwarder, then trusted no-process cold start. Process presence, a profile
+lock, a visible window, or a launcher PID cannot replace forwarder proof. Do not invoke the debugger flag until the selected target fits one row:
 
 | State | Required action |
 |---|---|
-| Compatible listener already exists | Launch nothing. Prove loopback bind, owner, exact executable/profile, retained instance, and full RDP preflight. Work requiring browser UI also requires a real window. Unknown or mismatched ownership stops. |
-| No selected-target process and no listener | Cold start: launch the selected executable normally with no debugger flag or invented profile/isolation arguments. Causally correlate the retained tree to this launch by baseline delta, exact executable/profile, start time, retained process/window identity, and lineage where available; a delta alone is not ownership. Wait boundedly for a real browser window, then make the separate debugger-server invocation. A combined cold debugger-server launch is forbidden. |
-| Matching real browser window, no listener | Record the pre-existing retained instance and window. Do not normal-launch Firefox. Invoke the exact executable once with `--start-debugger-server PORT`, then prove the retained listener owner rather than the helper PID. |
-| Window evidence unavailable/inconclusive | Follow the recovery contract below; without trusted correlation, stop before the listener. |
-| Successful trusted enumeration proves selected-target processes but no real browser window | This is neither cold start nor existing-window attachment. Do not invoke the debugger server. If this task just made the normal launch, finish its bounded window wait and clean its proven tree on timeout only under the cleanup-matrix identity and ownership gates; otherwise leave and report it. If trusted PID start time or explicit user context proves a user launch is still starting, make one bounded read-only window wait/re-enumeration and leave it untouched on timeout. Otherwise stop and leave all processes untouched. |
-| Executable, profile, listener, or retained-instance mismatch | Stop. Do not substitute a binary/profile, add `--no-remote`, or create another listener. |
+| Compatible listener exists | Launch nothing; prove bind, owner, identity, and full RDP preflight. |
+| Exact forwarder, no listener | Prove handler gates, revalidate the forwarder, invoke once, then prove the listener owner is the retained PID. |
+| No target process or listener | Normal-launch, correlate the process/profile, then prove handler gates and wait for and revalidate its forwarder. |
+| Process exists, forwarder unproven | Wait only for a task-owned or trusted currently-starting launch; otherwise stop. |
+| Any identity mismatch | Stop; do not substitute a binary/profile, change channels, or add isolation flags. |
 
-An enumerator has exactly three outcomes: a correlated browser window, confirmed absence after a successful bounded enumeration, or unavailable/inconclusive evidence. Invocation errors, service/bootstrap failures, empty results from a probe known to be isolated from the interactive desktop, and screenshot/capture failures are not completed enumerations. Preserve the exact error and do not convert the third outcome into the second.
+### Listener-gate pressure cases
 
-When a window tool fails before enumeration for an existing process or after a task-owned normal launch, allocate exactly one fresh recovery
-service/session. Prefer one fresh read-only subagent when it provides a separate tool service/session; otherwise use one fresh local service/session.
-Do not try both sequentially. A separate subagent service prevents a stale parent-task helper from ending the Firefox task.
+Before publishing a revision, give fresh read-only agents these cases and require the stated decision without touching Firefox:
 
-In that fresh session, first follow the current tool's required initialization or discovery call and inspect the API it actually exposes. Do not reuse
-an import, global binding, method name, or example remembered from another session or an older tool version. First-use documentation and errors such
-as an undefined binding, missing module, or missing method before a supported native-window list/state operation starts are capability validation,
-not enumeration. If a stale call fails that way, use the returned current documentation to make at most one corrected supported list/state call in
-the same fresh session. Do not reset it, allocate another service/session, or dispatch a second supported list/state operation.
+| Case | Required decision |
+|---|---|
+| Existing compatible listener; native window enumeration unavailable | Launch nothing; connect and use RDP browser readiness. |
+| Exact forwarder and all handler gates; no listener | Invoke the actual browser executable once, then require listener owner and RDP proof. |
+| Any handler pref false, policy disabled, or a gate unproven | Stop before invocation. |
+| Visible window or profile lock but no exact forwarder | Stop; neither is forwarding proof. |
+| Exact target-owned profile lock plus exact forwarder | Treat the lock as expected; continue only through the other gates. |
+| Supplied wrapper or portable launcher | Inspect only; stop and request the actual browser executable. |
+| No process or listener | Normal-launch without the debugger flag, then require handler and forwarder proof before the separate request. |
 
-The service/session allocation is the outer one-shot budget; dispatch of a supported native-window list/state operation is the inner one-shot budget.
-A browser-tab inventory, a tool state with no native-app/window surface, or output that cannot be correlated to the retained Firefox process is
-unavailable/inconclusive, not confirmed absence. If the fresh service cannot initialize, no supported native-window operation exists, or the single
-operation fails or remains uncorrelatable, report `window evidence unavailable`. A bootstrap failure leaves zero enumeration attempts but never
-authorizes a second fresh service/session. A full agent-host relaunch is a later user-controlled fallback after active tasks finish. A screenshot
-policy error after successful listing does not invalidate the listing.
+## Command-forwarding proof
 
-Independently correlate candidates to the retained process and selected executable/profile. On Windows require a visible, non-cloaked top-level candidate; process presence, launcher PID/exit, a nonzero `MainWindowHandle`, a blank-title/hidden window, helper success, and listener appearance are not proof. An `EnumWindows`-based native probe can reject invisible, cloaked, owned, zero-area, remoting, or wrong-executable HWNDs, but a survivor is only a browser-window candidate: Firefox's main window declares `windowtype="navigator:browser"` in [`browser.xhtml`](https://hg.mozilla.org/releases/mozilla-beta/file/490e9bad7f985070dce4abc80b1fbe6b11567d00/browser/base/content/browser.xhtml), while Browser Toolbox declares `windowtype="devtools:toolbox"` in [`window.html`](https://hg.mozilla.org/releases/mozilla-beta/file/490e9bad7f985070dce4abc80b1fbe6b11567d00/devtools/client/framework/browser-toolbox/window.html). [`nsWindow::ChooseWindowClass`](https://hg.mozilla.org/releases/mozilla-beta/file/490e9bad7f985070dce4abc80b1fbe6b11567d00/widget/windows/nsWindow.cpp#l1371) does not see that DOM attribute, and [`nsWindow::GetMainWindowClass`](https://hg.mozilla.org/releases/mozilla-beta/file/490e9bad7f985070dce4abc80b1fbe6b11567d00/widget/windows/nsWindow.cpp#l7942) permits a class override. Final positive proof therefore needs trusted automation that distinguishes browser chrome, or—when a compatible listener already exists—a browser-side check for `windowtype === "navigator:browser"` and `gBrowser`.
+Firefox's command-forwarding service is independent of DevTools and Browser Toolbox. On Windows, `nsWinRemoteServer::Startup` creates a hidden
+top-level HWND after profile startup; `nsWinRemoteClient::SendCommandLine` finds the matching class and sends the whole command line with
+`WM_COPYDATA`. `nsIRemoteService` keys forwarding to the same update channel and full root profile path.
 
-On Windows pass the exact executable through `Start-Process -FilePath`. For this listener invocation, `-ArgumentList @('--start-debugger-server', [string]$port)` is safe because both argument tokens contain no spaces; PowerShell otherwise joins array elements into one string, so arbitrary arguments require `System.Diagnostics.ProcessStartInfo.ArgumentList` or verified explicit quoting. The result or exited PID may be only the command-line forwarding helper. After the separate debugger invocation, take bounded error-visible listener evidence, resolve its owning Firefox process and retained instance when possible, then follow the recipe below. An empty error-suppressed port query is not evidence.
+For a Windows target, call `EnumWindows`, `GetClassNameW`, and `GetWindowThreadProcessId` directly; do not depend on visible-window automation or
+`MainWindowHandle`. Keep hidden and zero-area HWNDs. Match Firefox's `Mozilla_*_RemoteWindow` class, including its package-family or hashed form when
+applicable, then require its owner to be the already validated main PID whose image is the selected executable. Treat the class as sensitive because
+its un-hashed form includes the profile path. Prove that launching the selected executable without profile-selection arguments resolves to the same
+profile/channel, and revalidate the HWND, PID, process start time, and image immediately before invocation. Multiple matches, an unreadable owner,
+or a disappearing endpoint stop before the flag.
+
+Firefox 156 source stamp `4a417e4a64d1d3699dbdc28d58bfa9f6522756b4` and its
+[Git mirror revision](https://github.com/mozilla-firefox/firefox/tree/891f4e41422b55fa920978feb93a164efd0bc765) establish this contract in:
+
+- `toolkit/components/remote/nsIRemoteService.idl` — `sendCommandLine` profile/channel contract and `NS_ERROR_NOT_AVAILABLE`.
+- `toolkit/components/remote/RemoteUtils.h` — `BuildClassName`.
+- `toolkit/components/remote/nsWinRemoteServer.cpp` — `nsWinRemoteServer::Startup`.
+- `toolkit/components/remote/nsWinRemoteClient.cpp` — `nsWinRemoteClient::SendCommandLine`.
+- `toolkit/components/remote/WinRemoteMessage.cpp` — `WinRemoteMessageReceiver::ParseV2` and `ParseV3`.
+- `toolkit/xre/nsAppRunner.cpp` — `XREMain::XRE_mainStartup` and `gRemoteService->StartupServer()`.
+- `devtools/startup/DevToolsStartup.sys.mjs` — `readCommandLineFlags`, `isDisabledByPolicy`, `_isRemoteDebuggingEnabled`, and
+  `handleDevToolsServerFlag`.
+- `browser/base/content/browser-init.js` — `gBrowserInit.delayedStartupFinished`.
+
+For other Firefox versions or derived builds, inspect the equivalent platform symbols before relying on this Windows class contract.
+
+If the forwarding endpoint is absent, `nsWinRemoteClient` returns `NS_ERROR_NOT_AVAILABLE` and `XRE_mainStartup` can continue as a new startup.
+Therefore process/profile presence alone cannot authorize the debugger flag. On macOS or Linux, require equivalent source-backed proof from Firefox's
+platform remote-command service; if it is unavailable, stop rather than assuming the Windows mechanism or cold-launching with the flag.
+
+On Windows pass the actual Firefox browser executable through `Start-Process -FilePath`. For this listener invocation,
+`-ArgumentList @('--start-debugger-server', [string]$port)` is safe because both argument tokens contain no spaces; arbitrary arguments require
+`System.Diagnostics.ProcessStartInfo.ArgumentList` or verified explicit quoting. The result or exited PID may be only the forwarding helper. After
+the invocation, take bounded error-visible listener evidence and prove its owner is the retained Firefox PID. Empty suppressed output is not evidence.
 
 ## Listener evidence, logs, and connection attempts
 
@@ -65,15 +110,32 @@ Count the listener request separately from client attempts. Invoke the selected 
 
 On Windows, run `Get-NetTCPConnection` without suppressing errors. If it errors or has no exact row, cross-check the full port in `netstat.exe -ano -p tcp`; retain the error and rows instead of collapsing them to empty. A wildcard/non-loopback bind, conflicting rows, or a foreign owner stops use. An exact loopback row owned by the retained Firefox proceeds normally.
 
-For a just-started task-owned listener only, an inconclusive or empty socket table does not cancel the mandatory first read-only RDP attempt when the pre-start port was free, effective `force-local` and the exact target source/package prove `LoopbackOnly`, the window/profile/instance/ownership evidence remains unchanged, and neither OS check reports an unsafe or foreign bind. Connect to `127.0.0.1` once, then recheck bind and owner before any task operation. This branch never applies to a pre-existing or unknown listener.
+For a just-started task-owned listener only, an inconclusive or empty socket table does not cancel the mandatory first read-only RDP attempt when the
+pre-start port was free, all handler and loopback gates remain proven, forwarder/profile/instance/ownership evidence remains unchanged, and neither
+OS check reports an unsafe or foreign bind. Connect to `127.0.0.1` once, then recheck bind and owner before any task operation. This branch never
+applies to a pre-existing or unknown listener.
 
-Stdout/stderr capture is optional diagnostic evidence. Use logs already available; for a task-owned cold launch, redirect to task-owned files only when that preserves the exact ordinary visible launch and drains without blocking. Logging does not authorize the `new-window` option in either accepted dash spelling, `headless`, `screenshot`, `-WindowStyle Hidden`, `-NoNewWindow`, `CreateNoWindow`, another profile/executable, or a restart. Do not relaunch a pre-existing instance merely to obtain logs. Inspect both the normal-launch and separate listener-invocation streams; a forwarded listener handler may write through the retained Firefox process rather than the helper. If capture could alter startup or no real browser window is independently proven, omit it and use the other evidence gates.
+Stdout/stderr capture is optional diagnostic evidence. Use logs already available; for a task-owned cold launch, redirect to task-owned files only when
+that preserves the exact ordinary visible launch and drains without blocking. Logging does not authorize the `new-window` option in either accepted
+dash spelling, `headless`, `screenshot`, `-WindowStyle Hidden`, `-NoNewWindow`, `CreateNoWindow`, another profile/executable, or a restart. Do not
+relaunch a pre-existing instance merely to obtain logs. Inspect both the normal-launch and separate listener-invocation streams; a forwarded listener
+handler may write through the retained Firefox process rather than the helper. If capture could alter startup, omit it and use the other evidence.
 
 [`DevToolsStartup.handleDevToolsServerFlag`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/startup/DevToolsStartup.sys.mjs#L1034-L1105) calls `listener.open()` without awaiting its result and immediately dumps `Started devtools server on PORT`; [`SocketListener.open`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L373-L417) reports a rejected open as `Could not start debugging listener on 'PORT': ...`. The first line proves the handler reached the open request, not that binding ultimately succeeded. A matching second line is explicit open failure: do not make a known-doomed client attempt; stop or take the pre-authorized restart checkpoint. Missing lines are inconclusive.
 
-Unless an explicit listener-open failure is already proven, the first real RDP attempt is mandatory and is not a retry. Inspect `FirefoxRdpClient.tcpAccepted` after failure. When it is `false`, dispose that client and make at most one sequential retry only if the listener was just requested by this task, the same bounded readiness deadline remains, target/window/ownership evidence is unchanged, OS/log refresh shows no explicit open failure or unsafe/foreign bind, and no task operation ran. Use a new client with an ephemeral local port; do not replay the listener request. A second pre-accept failure marks that listener unhealthy. For a pre-existing compatible listener, the first pre-accept failure ends preflight as unhealthy with no retry. When `tcpAccepted` is `true`, keep that socket through approval and capability preflight with no retry or reconnect; afterward only the explicitly scoped post-dispatch, restart, and cleanup replacements below are allowed.
+Unless an explicit listener-open failure is already proven, the first real RDP attempt is mandatory and is not a retry. Inspect
+`FirefoxRdpClient.tcpAccepted` after failure. When it is `false`, dispose that client and make at most one sequential retry only if the listener was
+just requested by this task, the same bounded deadline remains, target/forwarder/ownership evidence is unchanged, OS/log refresh shows no explicit
+open failure or unsafe/foreign bind, and no task operation ran. Use a new client with an ephemeral local port; do not replay the listener request. A
+second pre-accept failure marks that listener unhealthy. For a pre-existing compatible listener, the first pre-accept failure ends preflight as
+unhealthy with no retry. When `tcpAccepted` is `true`, keep that socket through approval and capability preflight with no retry or reconnect;
+afterward only the explicitly scoped post-dispatch, restart, and cleanup replacements below are allowed.
 
-Firefox 154.0.1 source explains the split. [`XREMain::XRE_mainStartup`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_1_RELEASE/toolkit/xre/nsAppRunner.cpp#L4951-L5011) selects the profile, calls `nsRemoteService::StartClient`, and exits the helper when forwarding succeeds; [`nsRemoteService::StartClient`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_1_RELEASE/toolkit/components/remote/nsRemoteService.cpp#L172-L226) forwards the whole command line through `nsWinRemoteClient`. [`nsWinRemoteServer::Startup`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_1_RELEASE/toolkit/components/remote/nsWinRemoteServer.cpp#L59-L85) creates a hidden remoting window, so forwarding success does not prove a real browser window. [`DevToolsStartup.handle`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_1_RELEASE/devtools/startup/DevToolsStartup.sys.mjs#L339-L390) and [`handleDevToolsServerFlag`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_1_RELEASE/devtools/startup/DevToolsStartup.sys.mjs#L1034-L1104) accept the flag on both initial and forwarded command lines, while [`nsDefaultCommandLineHandler.handle`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_1_RELEASE/browser/components/BrowserContentHandler.sys.mjs#L1611-L1632) may open the normal window on initial launch. This contract deliberately stages cold launch so window proof precedes the listener request. When remote debugging is enabled and the forwarded flag is handled, [`WinRemoteMessageReceiver::ParseV3`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_1_RELEASE/toolkit/components/remote/WinRemoteMessage.cpp#L58-L100) supplies `STATE_REMOTE_AUTO`, `handleDevToolsServerFlag` sets `preventDefault`, and the default handler's [no-URL branch](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_1_RELEASE/browser/components/BrowserContentHandler.sys.mjs#L1616-L1640) does not open a browser window. Thus a handled forwarded server flag can create a listener without creating the missing browser window, and port readiness never proves UI readiness.
+When the handler gates pass and forwarding succeeds, `WinRemoteMessageReceiver::ParseV2` or `ParseV3` marks the command `STATE_REMOTE_AUTO`.
+`DevToolsStartup.handleDevToolsServerFlag` opens the listener and sets `cmdLine.preventDefault`, so that command does not create a browser window.
+If policy disables flag parsing or either debugger pref is false, the handler does not reach that suppression; this is why invocation must stop. The
+separately issued ordinary launch continues its own startup. The listener proves only forwarding and binding; browser UI readiness is the
+post-connection gate below.
 
 ## Ownership and baseline
 
@@ -81,6 +143,8 @@ Firefox 154.0.1 source explains the split. [`XREMain::XRE_mainStartup`](https://
 - Use one live task-owned socket at a time. The pre-accept retry above creates a new client only after the unaccepted client is disposed. Do not share sockets across tasks or reconnect per evaluation; every other sequential replacement must be the explicitly scoped post-dispatch, restart, or cleanup branch below.
 - Normally omit `localPort` or use `0` for a sequential replacement; reusing a fixed client port can fail with `EADDRINUSE` while the prior socket is in `TIME_WAIT`.
 - Capture opaque window/tab order and selection, feature state, listener/process ownership, add-on state, and only the URLs/titles needed as evidence. Choose restoration invariants before mutation.
+- For session/window work, capture every relevant window's `nsIAppWindow.chromeFlags`, `chromehidden`, and `menubar`, `toolbar`, `locationbar`, and
+  `personalbar` visibility before and after. Do not restore a normal window from a backup whose chrome invariants are unexpectedly reduced.
 - After capability preflight and before mutation, keep task-operation sentinels and live identities, including original method references, in a uniquely named property on a stable browser window. Keep only serializable restoration invariants in the client.
 - For browser-managed groups or containers, retain group identity and neighboring anchors. Treat a global native index as diagnostic unless the requested behavior owns it.
 
@@ -99,6 +163,33 @@ If any part is missing, return `unsupported` with the exact missing capability a
 This gate is the listener preflight and runs before any task operation. An accepted socket that receives no root greeting may be waiting on Firefox's connection-approval prompt: [`Prompt.Server.authenticate`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/auth.js#L148-L204) invokes [`Server.defaultAllowConnection`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/prompt.js#L125-L164) before [`ServerSocketConnection._handle`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L547-L556) allows the connection. Before connecting, tell the user and choose a visible bounded deadline long enough for approval; keep that one socket while the user accepts or declines. Do not automate or bypass the prompt, open replacement sockets during preflight, or restart. If the deadline expires while prompt state is unknown, dispose the socket and report approval unresolved rather than listener failure. Once TCP was accepted, only after approval is resolved or the prompt is ruled out does reset, a malformed or missing greeting, or timeout/transport failure in a mandatory capability mark the listener unhealthy. Dispose that client. With prior restart authorization, a complete baseline, and exclusive ownership, take the restart checkpoint immediately instead of opening a replacement socket to the same listener. Without those prerequisites, stop before the task call. Run one full gate cycle on the replacement instance, including the standard eligible pre-accept retry; another unhealthy result stops without a task operation or second restart. Treat an explicit unsupported-capability response as incompatibility, not listener failure.
 
 For privileged evaluation that needs XPCOM services, probe and use `globalThis.Services` in the selected target. Mainline Firefox 117 removed the legacy `resource://gre/modules/Services.jsm`; it was not renamed to `Services.sys.mjs`. If the global is absent, use the legacy JSM only after the target package or source proves it exists and the target exposes a compatible JSM importer; otherwise return `unsupported`. ESR and derived builds follow their actual capabilities, not the mainline version number. This boundary comes from [`xpc::InitGlobalObject`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_117_0_RELEASE/js/xpconnect/src/nsXPConnect.cpp#L465-L489), [`mozJSModuleLoader::DefineJSServices`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_117_0_RELEASE/js/xpconnect/loader/mozJSModuleLoader.cpp#L1750-L1772), and Firefox [bug 1780695](https://bugzilla.mozilla.org/show_bug.cgi?id=1780695).
+
+### Browser-window readiness
+
+After capability and `Services` preflight, query readiness through the same socket instead of depending on native visible-window automation:
+
+```javascript
+(() => {
+  const enumerator = Services.wm.getEnumerator("navigator:browser");
+  const windows = [];
+  while (enumerator.hasMoreElements()) {
+    const win = enumerator.getNext();
+    windows.push({
+      ready: !!win.gBrowser &&
+        win.gBrowserInit?.delayedStartupFinished === true,
+    });
+  }
+  return JSON.stringify({
+    count: windows.length,
+    ready: windows.filter(win => win.ready).length,
+  });
+})()
+```
+
+Require `count > 0` and at least one ready browser window to attach. Before mutation, require every window affected by the task to be ready. Poll this
+predicate only within the preselected browser-readiness deadline. If it does not pass, perform no mutation and report `browser window not ready`; do not
+open a window or restart merely to satisfy the gate. In Firefox 156, `browser/base/content/browser/browser-init.js` defines
+`gBrowserInit.delayedStartupFinished` and sets it immediately before notifying `browser-delayed-startup-finished`.
 
 ## Same-process XPI install and readiness
 
@@ -180,6 +271,8 @@ In `finally`, restore task-owned globals, wrapped methods, preferences, tabs/gro
 
 ## Result contract
 
-Report the resolved executable, reported product and version/build, and detected platform; selected launch branch and real-window evidence; PID/start time; opaque/redacted profile identity and instance sentinel; port and ownership; listener-request count; Windows listener evidence and Firefox-log evidence; client-attempt count and `tcpAccepted` result for each; capability path; XPI identity; install state/error; per-window readiness; actual-path assertions; restoration comparison; client closure; and any listener/process left running.
+Report the resolved executable, product and version/build, platform, launch branch, forwarder evidence, PID/start time, opaque/redacted profile identity,
+instance sentinel, port and ownership, listener-request count, OS/log evidence, client-attempt count and `tcpAccepted`, capability path, XPI identity,
+install/readiness state, per-window readiness, actual-path assertions, restoration comparison, client closure, and retained listeners/processes.
 
 Name the highest evidence level reached. Label **static inference**, **live observation**, and **unverified compatibility** separately. A build or package check does not prove live Firefox behavior; a completed install does not prove readiness or the real path; blocked or skipped checks remain unverified.
