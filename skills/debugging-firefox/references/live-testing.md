@@ -129,7 +129,7 @@ just requested by this task, the same bounded deadline remains, target/forwarder
 open failure or unsafe/foreign bind, and no task operation ran. Use a new client with an ephemeral local port; do not replay the listener request. A
 second pre-accept failure marks that listener unhealthy. For a pre-existing compatible listener, the first pre-accept failure ends preflight as
 unhealthy with no retry. When `tcpAccepted` is `true`, keep that socket through approval and capability preflight with no retry or reconnect;
-afterward only the explicitly scoped post-dispatch, restart, and cleanup replacements below are allowed.
+replacement requires an explicit approval-resolution, post-dispatch, restart, or cleanup branch below.
 
 When the handler gates pass and forwarding succeeds, `WinRemoteMessageReceiver::ParseV2` or `ParseV3` marks the command `STATE_REMOTE_AUTO`.
 `DevToolsStartup.handleDevToolsServerFlag` opens the listener and sets `cmdLine.preventDefault`, so that command does not create a browser window.
@@ -140,7 +140,8 @@ post-connection gate below.
 ## Ownership and baseline
 
 - Establish one explicit mutation owner for the Firefox instance. Other tasks remain read-only and use separate sockets, or close their clients and explicitly hand off mutation ownership. If coordination is unavailable or target identity is uncertain, stop before mutation.
-- Use one live task-owned socket at a time. The pre-accept retry above creates a new client only after the unaccepted client is disposed. Do not share sockets across tasks or reconnect per evaluation; every other sequential replacement must be the explicitly scoped post-dispatch, restart, or cleanup branch below.
+- Use one live task-owned socket at a time. Dispose the old client before any permitted replacement. Do not share sockets across tasks
+  or reconnect per evaluation; replacements require the explicit pre-accept, approval-resolution, post-dispatch, restart, or cleanup branch.
 - Normally omit `localPort` or use `0` for a sequential replacement; reusing a fixed client port can fail with `EADDRINUSE` while the prior socket is in `TIME_WAIT`.
 - Capture opaque window/tab order and selection, feature state, listener/process ownership, add-on state, and only the URLs/titles needed as evidence. Choose restoration invariants before mutation.
 - For session/window work, capture every relevant window's `nsIAppWindow.chromeFlags`, `chromehidden`, and `menubar`, `toolbar`, `locationbar`, and
@@ -163,6 +164,16 @@ If any part is missing, return `unsupported` with the exact missing capability a
 This gate is the listener preflight and runs before any task operation. An accepted socket that receives no root greeting may be waiting on Firefox's connection-approval prompt: [`Prompt.Server.authenticate`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/auth.js#L148-L204) invokes [`Server.defaultAllowConnection`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/prompt.js#L125-L164) before [`ServerSocketConnection._handle`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_154_0_RELEASE/devtools/shared/security/socket.js#L547-L556) allows the connection. Before connecting, tell the user and choose a visible bounded deadline long enough for approval; keep that one socket while the user accepts or declines. Do not automate or bypass the prompt, open replacement sockets during preflight, or restart. If the deadline expires while prompt state is unknown, dispose the socket and report approval unresolved rather than listener failure. Once TCP was accepted, only after approval is resolved or the prompt is ruled out does reset, a malformed or missing greeting, or timeout/transport failure in a mandatory capability mark the listener unhealthy. Dispose that client. With prior restart authorization, a complete baseline, and exclusive ownership, take the restart checkpoint immediately instead of opening a replacement socket to the same listener. Without those prerequisites, stop before the task call. Run one full gate cycle on the replacement instance, including the standard eligible pre-accept retry; another unhealthy result stops without a task operation or second restart. Treat an explicit unsupported-capability response as incompatibility, not listener failure.
 
 For privileged evaluation that needs XPCOM services, probe and use `globalThis.Services` in the selected target. Mainline Firefox 117 removed the legacy `resource://gre/modules/Services.jsm`; it was not renamed to `Services.sys.mjs`. If the global is absent, use the legacy JSM only after the target package or source proves it exists and the target exposes a compatible JSM importer; otherwise return `unsupported`. ESR and derived builds follow their actual capabilities, not the mainline version number. This boundary comes from [`xpc::InitGlobalObject`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_117_0_RELEASE/js/xpconnect/src/nsXPConnect.cpp#L465-L489), [`mozJSModuleLoader::DefineJSServices`](https://github.com/mozilla-firefox/firefox/blob/FIREFOX_117_0_RELEASE/js/xpconnect/loader/mozJSModuleLoader.cpp#L1750-L1772), and Firefox [bug 1780695](https://bugzilla.mozilla.org/show_bug.cgi?id=1780695).
+
+### Approval resolved after the deadline
+
+When the previous socket was disposed solely because the root-greeting deadline expired with approval unknown, a later explicit user
+confirmation that the prompt was allowed and request to continue is new evidence. Revalidate the retained instance, ownership and loopback
+listener, then permit one new client with an ephemeral local port and full capability preflight. Do not invoke the listener flag again.
+Announce the new bounded approval deadline; the replacement may show another prompt. Never bypass it or reconnect while it is unresolved.
+This branch does not apply to declined approval, malformed protocol, or a capability/transport failure after resolved approval.
+A further approval-unknown timeout ends this continuation; do not loop on confirmations. After resolved approval, apply the ordinary
+unsupported/unhealthy preflight rules above, including their separate restart-authorization gates.
 
 ### Browser-window readiness
 

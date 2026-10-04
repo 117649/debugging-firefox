@@ -53,7 +53,12 @@ Allow one mutation owner per instance and one live task-owned socket at a time. 
 
 1. Capture the baseline: target identity, browser state, ownership, and privacy-minimized restoration invariants.
 2. Read [references/live-testing.md](references/live-testing.md) before listener start/connection, mutation, behavior proof, or restart. Install/reload claims require install/readiness and restoration; behavior claims require an exercised user-facing/native path. Otherwise mark behavior unverified and continue only separately requested install/reload work.
-3. Request the listener at most once per retained Firefox instance; an authorized restart permits one request on its replacement. Unless Firefox logging already proves an explicit listener-open failure, follow the reference's OS/log evidence recipe and make the mandatory first real connection with [scripts/firefox-rdp.mjs](scripts/firefox-rdp.mjs), whose `connect()` ends with an effect-free `evaluateJSAsync` probe. If `tcpAccepted` remains false and every just-started task-owned readiness predicate passes, dispose that client and make at most one sequential connection retry. Once `tcpAccepted` is true, keep that socket through initial approval and capability preflight; do not reconnect during that preflight. Afterward, only the reference's explicitly scoped post-dispatch, restart, and cleanup replacements are allowed.
+3. Request the listener at most once per retained Firefox instance; an authorized restart permits one request on its replacement.
+   Unless Firefox logging proves explicit listener-open failure, follow the reference's OS/log evidence recipe and make the first real connection
+   with [scripts/firefox-rdp.mjs](scripts/firefox-rdp.mjs), whose `connect()` ends with an effect-free `evaluateJSAsync` probe.
+   If `tcpAccepted` remains false and every just-started task-owned readiness predicate passes, dispose that client and allow one sequential retry.
+   Once TCP is accepted, retain that socket through approval and capability preflight. Replacements require the reference's explicit
+   approval-resolution, post-dispatch, restart, or cleanup branch; a still-unresolved approval never permits reconnecting.
 4. After dispatch, a timeout invalidates the socket; one authorized sequential replacement may only query task-owned authoritative state once before deciding whether task-operation replay is safe.
 5. In `finally`, restore only task-owned changes; compare captured restoration invariants with the baseline; close the client; report retained Firefox listeners/processes.
 

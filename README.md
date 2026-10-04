@@ -64,7 +64,8 @@ A failed visible-window tool does not block attachment after exact handler and f
 `navigator:browser` window with `gBrowser` and completed delayed startup; every task-affected window must be ready before mutation. Request the listener
 at most once per retained instance. A just-started task-owned listener permits at most one new-client retry only when the first client never reached
 TCP acceptance and all target, forwarder, ownership, OS, and log predicates still pass. After TCP acceptance, keep that socket through approval and
-capability preflight. Only the reference's post-dispatch, restart, and cleanup branches may replace it. If any prerequisite fails, stop before the
+capability preflight. Only the reference's approval-resolution, post-dispatch, restart, and cleanup branches may replace it.
+If any prerequisite fails, stop before the
 operation and report the unverified boundary.
 
 ## Primary documentation
