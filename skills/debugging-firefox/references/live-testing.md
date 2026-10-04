@@ -209,6 +209,12 @@ open a window or restart merely to satisfy the gate. In Firefox 156, `browser/ba
 
 ## Same-process XPI install and readiness
 
+Classic-RDP asynchronous work must use the window sentinel and bounded polling below, not raw top-level `await` or a returned Promise.
+If a healthy evaluation returns a `longString` grip and `evaluateJson` reports `Firefox evaluation did not return JSON text`,
+read a smaller projection or bounded slices of the already-captured result on that same socket. This type error is not a transport timeout.
+Do not replay the mutation that produced the result. Preserve pointer transitions when bounding traces; early mousemove traffic must not
+fill the buffer before the reproduction. Stop/remove temporary listeners and timers after capture.
+
 Validate the exact XPI path, contents, expected add-on ID, and version first. Through the same parent-process connection, import `AddonManager`, construct an `nsIFile`, pass the native path serialized with `JSON.stringify(xpiPath)` to `initWithPath()`, and call `AddonManager.getInstallForFile(file)`. Capture candidate state/error before and after `install.install()`, then query the expected add-on ID, version, active/disabled flags, and restart requirement. Observed numeric states are run evidence, not cross-version constants.
 
 Start asynchronous work behind the browser-window sentinel. Poll a small serialized status object with bounded `evaluateJson` or `pollJson` calls; raw RDP values may be protocol grips. Readiness is feature-owned: assert the predicate for every affected pre-existing window or frame. A navigation `tabNavigated` event with `state: "stop"` proves navigation completion, not application or network idle.
