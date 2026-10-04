@@ -72,6 +72,9 @@ An explicit listener-open failure, or an unhealthy preflight after the permitted
 
 ## Common mistakes
 
+For hover or popup reactions away from the visible cursor, read [references/pointer-hover.md](references/pointer-hover.md)
+before proposing a CSS fix or clearing pointer state.
+
 Never treat process presence, a profile lock, launcher PID/exit, `MainWindowHandle`, a listening port, or a visible-window-tool result as
 command-forwarding proof. Also never do any of the following: require native visible-window proof before a verified forwarder; substitute port polling
 for the first real RDP attempt; change visible launch merely to capture logs; invent `Services.sys.mjs`; replay timed-out mutations; restart without
