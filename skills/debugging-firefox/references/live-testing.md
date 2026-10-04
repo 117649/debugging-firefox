@@ -287,7 +287,11 @@ Wait for feature readiness and authoritative session restoration, repeat the int
 |---|---|
 | Firefox and listener pre-existed | Close only this task's client; leave both running. |
 | Task started listener on pre-existing Firefox | Use the source-gated restartless shutdown when its ownership and compatibility checks pass; otherwise close the client, leave Firefox running, and report the retained listener. |
-| Task cold-started dedicated Firefox | Close the client, then revalidate retained-instance identity and exclusive current ownership and require known other tasks to release it. Only then terminate the causally proven task-owned tree and verify both the tree and its listener stopped. User adoption, another task's use, or incomplete proof leaves Firefox running and reported. |
+| Task cold-started dedicated Firefox | After ownership release, use application-wide graceful Quit; verify the whole owned tree and port exited. |
+
+For cold-launch cleanup, close the client, revalidate the retained instance and exclusive ownership, and require other tasks to release it.
+User adoption, another task's use, or incomplete proof leaves Firefox running and reported. Window Close is not application-wide Quit;
+failure to exit does not authorize force-killing the process tree.
 
 In `finally`, restore task-owned globals, wrapped methods, preferences, tabs/groups, window selection/focus, and feature layout. Do not uninstall an add-on the user asked to install or update, and never clean up another task's resources.
 
