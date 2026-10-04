@@ -204,7 +204,7 @@ After capability and `Services` preflight, query readiness through the same sock
 
 Require `count > 0` and at least one ready browser window to attach. Before mutation, require every window affected by the task to be ready. Poll this
 predicate only within the preselected browser-readiness deadline. If it does not pass, perform no mutation and report `browser window not ready`; do not
-open a window or restart merely to satisfy the gate. In Firefox 156, `browser/base/content/browser/browser-init.js` defines
+open a window or restart merely to satisfy the gate. In Firefox 156, `browser/base/content/browser-init.js` defines
 `gBrowserInit.delayedStartupFinished` and sets it immediately before notifying `browser-delayed-startup-finished`.
 
 ## Same-process XPI install and readiness
