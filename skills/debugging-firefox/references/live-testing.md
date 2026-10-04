@@ -106,6 +106,11 @@ the invocation, take bounded error-visible listener evidence and prove its owner
 
 ## Listener evidence, logs, and connection attempts
 
+If a Windows command fails before execution with `CreateProcess` / `Access denied`, distinguish the runner failure from Firefox state.
+Try the same read-only identity/port query once through an available PTY (`exec_command` with `tty: true`) or app terminal,
+under the same permissions. This is a transport alternative, not a sandbox bypass or a reason to restart Firefox/the agent host.
+If that route also fails, report the missing evidence; do not repeat blocked process-launch routes without new evidence.
+
 Count the listener request separately from client attempts. Invoke the selected executable with `--start-debugger-server PORT` at most once per retained Firefox instance; an authorized restart permits exactly one new request on the replacement instance. Never replay a request because a port enumerator is empty or a client is refused.
 
 On Windows, run `Get-NetTCPConnection` without suppressing errors. If it errors or has no exact row, cross-check the full port in `netstat.exe -ano -p tcp`; retain the error and rows instead of collapsing them to empty. A wildcard/non-loopback bind, conflicting rows, or a foreign owner stops use. An exact loopback row owned by the retained Firefox proceeds normally.
